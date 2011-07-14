@@ -340,7 +340,7 @@ static bool check_os_kernel_version(void)
 	struct utsname u;
 
 	if (uname(&u) < 0) {
-		perror("fuse4x uname():");
+		perror("fuse4x uname");
 		return false;
 	}
 
@@ -356,9 +356,8 @@ static bool check_os_kernel_version(void)
 	if ((errno == EINVAL) || (errno == ERANGE)) {
 		return false;
 	}
-        
-        /* OS X 10.5 = Darwin 9 */
-	return major >= 9;
+
+	return major >= 9; // 9 is kernel for MaxOSX Leopard (10.5)
 }
 
 static bool check_kext_version(bool quiet_mode)
