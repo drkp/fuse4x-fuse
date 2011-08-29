@@ -45,12 +45,16 @@ struct mount_options {
 
 enum {
 	KEY_RDONLY,
-	KEY_SYNCHRONOUS,
+	KEY_WRITABLE,
 	KEY_NOEXEC,
+	KEY_EXEC,
 	KEY_NOSUID,
+	KEY_SUID,
 	KEY_NODEV,
+	KEY_DEV,
 	KEY_UNION,
 	KEY_ASYNC,
+	KEY_SYNC,
 	KEY_QUARANTINE,
 	KEY_LOCAL,
 	KEY_QUOTA,
@@ -63,6 +67,7 @@ enum {
 	KEY_DEFWRITE,
 	KEY_MULTILABEL,
 	KEY_NOATIME,
+	KEY_ATIME,
 
 	KEY_ALLOW_OTHER,
 	KEY_ALLOW_RECURSION,
@@ -93,7 +98,6 @@ enum {
 	KEY_NO_VNCACHE,
 	KEY_USE_INO,
 	KEY_VOLNAME,
-	KEY_PING_DISKARB,
 	KEY_AUTO_CACHE,
 	KEY_NATIVE_XATTR,
 	KEY_SPARSE,
@@ -108,11 +112,16 @@ static const struct fuse_opt fuse_mount_opts[] = {
 	// See http://fxr.watson.org/fxr/source/bsd/sys/mount.h?v=xnu-1456.1.26#L279
 	FUSE_OPT_KEY("-r", KEY_RDONLY),
 	FUSE_OPT_KEY("rdonly", KEY_RDONLY),
-	FUSE_OPT_KEY("sync", KEY_SYNCHRONOUS),
+	FUSE_OPT_KEY("ro", KEY_RDONLY),
+	FUSE_OPT_KEY("rw", KEY_WRITABLE),
+	FUSE_OPT_KEY("exec", KEY_EXEC),
 	FUSE_OPT_KEY("noexec", KEY_NOEXEC),
+	FUSE_OPT_KEY("suid", KEY_SUID),
 	FUSE_OPT_KEY("nosuid", KEY_NOSUID),
+	FUSE_OPT_KEY("dev", KEY_DEV),
 	FUSE_OPT_KEY("nodev", KEY_NODEV),
 	FUSE_OPT_KEY("union", KEY_UNION),
+	FUSE_OPT_KEY("sync", KEY_SYNC),
 	FUSE_OPT_KEY("async", KEY_ASYNC),
 	FUSE_OPT_KEY("quarantine", KEY_QUARANTINE),
 	FUSE_OPT_KEY("local", KEY_LOCAL),
@@ -125,6 +134,7 @@ static const struct fuse_opt fuse_mount_opts[] = {
 	FUSE_OPT_KEY("nouserxattr", KEY_NOUSERXATTR),
 	FUSE_OPT_KEY("defwrite", KEY_DEFWRITE),
 	FUSE_OPT_KEY("multilabel", KEY_MULTILABEL),
+	FUSE_OPT_KEY("atime", KEY_ATIME),
 	FUSE_OPT_KEY("noatime", KEY_NOATIME),
 
 	// fuse4x specific mount flags
@@ -158,19 +168,28 @@ static const struct fuse_opt fuse_mount_opts[] = {
 	FUSE_OPT_KEY("use_ino", KEY_USE_INO),
 	FUSE_OPT_KEY("volname=", KEY_VOLNAME),
 	FUSE_OPT_KEY("volicon=", KEY_VOLICON),
-	FUSE_OPT_KEY("ping_diskarb", KEY_PING_DISKARB),
 	FUSE_OPT_KEY("auto_cache", KEY_AUTO_CACHE),
 	FUSE_OPT_KEY("native_xattr", KEY_NATIVE_XATTR),
 	FUSE_OPT_KEY("sparse", KEY_SPARSE),
 	FUSE_OPT_KEY("quiet", KEY_QUIET),
 
+	FUSE_OPT_KEY("ping_diskarb", KEY_IGNORED),
 	FUSE_OPT_KEY("subtype=", KEY_IGNORED),
 	FUSE_OPT_END
 };
 
 
-#define STANDARD_MOUNT_OPT(name) case KEY_ ## name: mo->standard_args |= MNT_ ## name; return 0;
-#define FUSE_MOUNT_OPT(name) case KEY_ ## name: mo->fuse_args.altflags |= FUSE_MOPT_ ## name; return 0;
+#define STANDARD_MOUNT_OPT(name) \
+    case KEY_ ## name: mo->standard_args |= MNT_ ## name; return 0;
+
+// some options also have 'negative' value that reset it to its default value.
+// it is needed as some tools (e.g. autofs) pass the default keys (such as 'rw').
+#define STANDARD_MOUNT_OPT_WITH_NEGATIVE(name, negative_key) \
+    case KEY_ ## name: mo->standard_args |= MNT_ ## name; return 0; \
+    case KEY_ ## negative_key: mo->standard_args &= ~MNT_ ## name; return 0;
+
+#define FUSE_MOUNT_OPT(name) \
+    case KEY_ ## name: mo->fuse_args.altflags |= FUSE_MOPT_ ## name; return 0;
 
 #define FUSE_MOUNT_OPT_PARSE_U32(key, param_name) \
 	case KEY_ ## key: \
@@ -199,13 +218,12 @@ static int fuse_mount_opt_proc(void *data, const char *arg, int key,
 
 	switch (key) {
 
-	STANDARD_MOUNT_OPT(RDONLY)
-	STANDARD_MOUNT_OPT(SYNCHRONOUS)
-	STANDARD_MOUNT_OPT(NOEXEC)
-	STANDARD_MOUNT_OPT(NOSUID)
-	STANDARD_MOUNT_OPT(NODEV)
+	STANDARD_MOUNT_OPT_WITH_NEGATIVE(RDONLY, WRITABLE)
+	STANDARD_MOUNT_OPT_WITH_NEGATIVE(NOEXEC, EXEC)
+	STANDARD_MOUNT_OPT_WITH_NEGATIVE(NOSUID, SUID)
+	STANDARD_MOUNT_OPT_WITH_NEGATIVE(NODEV, DEV)
 	STANDARD_MOUNT_OPT(UNION)
-	STANDARD_MOUNT_OPT(ASYNC)
+	STANDARD_MOUNT_OPT_WITH_NEGATIVE(ASYNC, SYNC)
 	STANDARD_MOUNT_OPT(QUARANTINE)
 	STANDARD_MOUNT_OPT(LOCAL)
 	STANDARD_MOUNT_OPT(QUOTA)
@@ -217,7 +235,7 @@ static int fuse_mount_opt_proc(void *data, const char *arg, int key,
 	STANDARD_MOUNT_OPT(NOUSERXATTR)
 	STANDARD_MOUNT_OPT(DEFWRITE)
 	STANDARD_MOUNT_OPT(MULTILABEL)
-	STANDARD_MOUNT_OPT(NOATIME)
+	STANDARD_MOUNT_OPT_WITH_NEGATIVE(NOATIME, ATIME)
 
 	FUSE_MOUNT_OPT(ALLOW_OTHER)
 	FUSE_MOUNT_OPT(ALLOW_ROOT)
@@ -237,7 +255,6 @@ static int fuse_mount_opt_proc(void *data, const char *arg, int key,
 	FUSE_MOUNT_OPT(NO_UBC)
 	FUSE_MOUNT_OPT(NO_VNCACHE)
 	FUSE_MOUNT_OPT(USE_INO)
-	FUSE_MOUNT_OPT(PING_DISKARB)
 	FUSE_MOUNT_OPT(AUTO_CACHE)
 	FUSE_MOUNT_OPT(NATIVE_XATTR)
 	FUSE_MOUNT_OPT(SPARSE)
@@ -452,9 +469,30 @@ void fuse_kern_unmount(const char *mountpoint, int fd)
 	if (!mountpoint)
 		return;
 
-	if (fd != -1)
-		close(fd);
-
+	// In XNU (opposite to Linux kernel) close() syscall cannot call our device _close function until there are any in-fligh
+	// requests to the device.
+	// And in case if we run fuse_loop() in a separate thread and call fuse_exit/fuse_unmount in the main one we have a deadlock.
+	// fuse_loop blocked on read() and waits for either a filesystem request or when filesystem become dead, and
+	// close() cannot mark the filesystem dead until read() is finished. Here is the deadlock stacktrace:
+	// close syscall is blocked in kernel:
+	//   msleep (in mach_kernel) + 157 (0x49149d)
+	//   fileproc_drain (in mach_kernel) + 169 (0x4737e2)
+	//   fdrelse (in mach_kernel) + 282 (0x475945)
+	//   close_nocancel (in mach_kernel) + 141 (0x475a39)
+	//   unix_syscall64 (in mach_kernel) + 617 (0x4f82fb)
+	//   lo64_unix_scall (in mach_kernel) + 77 (0x2a251d)
+	// fuse_session_loop/read() is blocked in:
+	//   msleep()
+	//   fuse_device_read()
+	//
+	//
+	// This deadlock can be destroyed by a filesystem request - read() syscall wakeups, returns to the userspace and at this time
+	// close() finally marks the filesystem as dead.
+	//
+	// The solution is to use the fuse device ioctl() to mark filesystem as dead, read() wakeups at this time and never blocks again.
+	// Let me know if you have better idea for avoiding this deadlock.
+	ioctl(fd, FUSEDEVIOCSETDAEMONDEAD);
+	close(fd);
 	unmount(mountpoint, MNT_FORCE);
 	return;
 }

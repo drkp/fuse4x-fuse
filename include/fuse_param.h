@@ -6,6 +6,7 @@
 #define _FUSE_PARAM_H_
 
 #include <sys/vmparam.h>
+#include <sys/ioctl.h>
 
 /* User Control */
 
@@ -30,7 +31,7 @@
 #define FUSE4X_DEVICE_BASENAME            "fuse4x"
 
 /*
- * This is the number of /dev/fuse<n> nodes we will create. <n> goes from
+ * This is the number of /dev/fuse4x<n> nodes we will create. <n> goes from
  * 0 to (FUSE_NDEVICES - 1).
  */
 #define FUSE4X_NDEVICES                   24
@@ -96,5 +97,11 @@
 #define FUSE_UIO_BACKUP_MAX                8
 
 #define FUSE_MAXNAMLEN                     255
+
+
+/* FUSEDEVIOCxxx */
+
+/* Mark the daemon as dead. */
+#define FUSEDEVIOCSETDAEMONDEAD        _IO('F', 1)
 
 #endif /* _FUSE_PARAM_H_ */
